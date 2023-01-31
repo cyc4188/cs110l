@@ -27,6 +27,23 @@ fn pick_a_random_word() -> String {
     String::from(words[rand::thread_rng().gen_range(0, words.len())].trim())
 }
 
+fn hello() {
+    println!("Welcome to Hangman!");
+    println!("You have {} incorrect guesses.", NUM_INCORRECT_GUESSES);
+}
+
+fn show_word(word: &str, guessed_letters: &Vec<char>) {
+    print!("The Word so far is ");
+    for c in word.chars() {
+        if guessed_letters.contains(&c) {
+            print!("{}", c);
+        } else {
+            print!("-");
+        }
+    }
+    println!("");
+}
+
 fn main() {
     let secret_word = pick_a_random_word();
     // Note: given what you know about Rust so far, it's easier to pull characters out of a
@@ -34,7 +51,29 @@ fn main() {
     // secret_word by doing secret_word_chars[i].
     let secret_word_chars: Vec<char> = secret_word.chars().collect();
     // Uncomment for debugging:
-    // println!("random word: {}", secret_word);
+    println!("random word: {}", secret_word);
+    
+    hello();
+    let mut guessed_letters: Vec<char> = Vec::new();
+    loop {
+        show_word(&secret_word, &guessed_letters);
 
-    // Your code here! :)
+        // get input
+        print!("Guess a letter: ");
+        io::stdout().flush().unwrap();
+        let mut guess = String::new();
+        io::stdin().read_line(&mut guess).expect("Failed to read line");
+        let guess_char = guess.chars().next().unwrap();
+        guessed_letters.push(guess_char);
+
+        // check
+        if secret_word_chars.iter().all(|c| guessed_letters.contains(c)) {
+            println!("You win!");
+            break;
+        }
+        if guessed_letters.len() == NUM_INCORRECT_GUESSES as usize {
+            println!("You lose!");
+            break;
+        }
+    }
 }
