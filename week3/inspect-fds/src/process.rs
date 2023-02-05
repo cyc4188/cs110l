@@ -1,6 +1,7 @@
 use crate::open_file::OpenFile;
 #[allow(unused)] // TODO: delete this line for Milestone 3
 use std::fs;
+use std::fmt::Display;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Process {
@@ -10,9 +11,32 @@ pub struct Process {
 }
 
 impl Process {
-    #[allow(unused)] // TODO: delete this line for Milestone 1
     pub fn new(pid: usize, ppid: usize, command: String) -> Process {
         Process { pid, ppid, command }
+    }
+
+    #[allow(unused)]
+    pub fn print(&self) {
+        println!("===== Process {{ pid: {}, ppid: {}, command: {} }} =====", self.pid, self.ppid, self.command);
+        match self.list_open_files() {
+            None => println!(
+                "Warning: could not inspect file descriptors for this process! \
+                It might have exited just as we were about to look at its fd table, \
+                or it might have exited a while ago and is waiting for the parent \
+                to reap it."
+                ),
+            Some(open_files) => {
+                for (fd, file) in open_files {
+                    println!(
+                        "{:<4} {:<15} cursor: {:<4} {}",
+                        fd,
+                        format!("({})", file.access_mode),
+                        file.cursor,
+                        file.colorized_name(),
+                        );
+                }
+            }
+        }
     }
 
     /// This function returns a list of file descriptor numbers for this Process, if that
@@ -20,11 +44,19 @@ impl Process {
     /// information will commonly be unavailable if the process has exited. (Zombie processes
     /// still have a pid, but their resources have already been freed, including the file
     /// descriptor table.)
-    #[allow(unused)] // TODO: delete this line for Milestone 3
     pub fn list_fds(&self) -> Option<Vec<usize>> {
-        // TODO: implement for Milestone 3
-        unimplemented!();
+        let path = format!("/proc/{}/fd", self.pid);
+        let mut fds = Vec::new();
+        for entry in fs::read_dir(path).ok()? {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            let filename = path.file_name()?.to_str()?;
+            let fd = filename.parse::<usize>().ok()?;
+            fds.push(fd);
+        }
+        Some(fds)
     }
+
 
     /// This function returns a list of (fdnumber, OpenFile) tuples, if file descriptor
     /// information is available (it returns None otherwise). The information is commonly
@@ -36,6 +68,12 @@ impl Process {
             open_files.push((fd, OpenFile::from_fd(self.pid, fd)?));
         }
         Some(open_files)
+    }
+}
+
+impl Display for Process {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "===== Process {{ pid: {}, ppid: {}, command: {} }} =====", self.pid, self.ppid, self.command)
     }
 }
 
