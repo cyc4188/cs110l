@@ -16,7 +16,7 @@ impl Debugger {
         // TODO (milestone 3): initialize the DwarfData
 
         let history_path = format!("{}/.deet_history", std::env::var("HOME").unwrap());
-        let mut readline = Editor::<()>::new();
+        let mut readline = Editor::<()>::new().expect("Create Editor fail");
         // Attempt to load history from ~/.deet_history if it exists
         let _ = readline.load_history(&history_path);
 
