@@ -6,7 +6,7 @@ use rustyline::Editor;
 pub struct Debugger {
     target: String,
     history_path: String,
-    readline: Editor<()>,
+    readline: Editor<()>, // Line Editor
     inferior: Option<Inferior>,
 }
 
@@ -38,6 +38,8 @@ impl Debugger {
                         // TODO (milestone 1): make the inferior run
                         // You may use self.inferior.as_mut().unwrap() to get a mutable reference
                         // to the Inferior object
+                        let cont = self.inferior.as_mut().unwrap().cont();
+
                     } else {
                         println!("Error starting subprocess");
                     }
