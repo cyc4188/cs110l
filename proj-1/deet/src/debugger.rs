@@ -71,23 +71,28 @@ impl Debugger {
     }
 
     pub fn continue_inferior(&mut self) {
-        match self.inferior.as_mut().unwrap().cont() {
-            Ok(status) => match status {
-                Status::Exited(exit_code) => {
-                    println!("Inferior exited with code {}", exit_code);
-                    self.inferior = None
+        if let Some(inferior) = self.inferior.as_mut() {
+            match inferior.cont() {
+                Ok(status) => match status {
+                    Status::Exited(exit_code) => {
+                        println!("Inferior exited with code {}", exit_code);
+                        self.inferior = None
+                    }
+                    Status::Signaled(signal) => {
+                        println!("Inferior was killed by signal {}", signal);
+                        self.kill_inferior();
+                    }
+                    Status::Stopped(signal, rip) => {
+                        println!("Inferior stopped at rip = 0x{:x} due to signal {}", rip, signal);
+                    }
+                },
+                Err(e) => {
+                    println!("Error: {:?}", e);
                 }
-                Status::Signaled(signal) => {
-                    println!("Inferior was killed by signal {}", signal);
-                    self.kill_inferior();
-                }
-                Status::Stopped(signal, rip) => {
-                    println!("Inferior stopped at rip = 0x{:x} due to signal {}", rip, signal);
-                }
-            },
-            Err(e) => {
-                println!("Error: {:?}", e);
             }
+        }
+        else {
+            println!("No inferior to continue");
         }
     }
 
