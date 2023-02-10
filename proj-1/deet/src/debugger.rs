@@ -53,6 +53,12 @@ impl Debugger {
                     self.kill_inferior();
                     return;
                 }
+                DebuggerCommand::Backtrace => {
+                    println!("Backtrace not implemented");
+                }
+                _ => {
+                    println!("Unknown command");
+                }
             }
         }
     }
@@ -69,7 +75,7 @@ impl Debugger {
             Ok(status) => match status {
                 Status::Exited(exit_code) => {
                     println!("Inferior exited with code {}", exit_code);
-                    self.kill_inferior();
+                    self.inferior = None
                 }
                 Status::Signaled(signal) => {
                     println!("Inferior was killed by signal {}", signal);
