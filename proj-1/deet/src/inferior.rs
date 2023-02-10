@@ -84,9 +84,17 @@ impl Inferior {
     /// print stack trace of the program
     pub fn backtrace(&self, debug_data: &DwarfData) {
         let regs = ptrace::getregs(self.pid()).unwrap();
-        let line = debug_data.get_line_from_addr(regs.rip as usize).unwrap();
-        let func = debug_data.get_function_from_addr(regs.rip as usize).unwrap();
-        println!("%rip register: {:#x}", regs.rip);
-        println!("{} ({})", func, line);
+        let mut instr_ptr = regs.rip as usize;
+        let mut ebp = regs.rbp as usize; 
+        loop {
+            let line = debug_data.get_line_from_addr(instr_ptr).unwrap();
+            let func = debug_data.get_function_from_addr(instr_ptr).unwrap();
+            println!("{} ({})", func, line);
+            if func == "main" {
+                break;
+            }
+            instr_ptr = ptrace::read(self.pid(), (ebp + 8) as ptrace::AddressType).unwrap() as usize;
+            ebp = ptrace::read(self.pid(), ebp as ptrace::AddressType).unwrap() as usize;
+        }
     }
 }

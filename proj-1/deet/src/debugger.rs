@@ -43,7 +43,7 @@ impl Debugger {
             history_path,
             readline,
             inferior: None,
-            debug_data: debug_data,
+            debug_data,
         }
     }
 
