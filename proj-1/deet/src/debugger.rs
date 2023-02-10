@@ -1,5 +1,6 @@
 use crate::debugger_command::DebuggerCommand;
 use crate::inferior::Inferior;
+use crate::inferior::Status;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
@@ -32,21 +33,54 @@ impl Debugger {
         loop {
             match self.get_next_command() {
                 DebuggerCommand::Run(args) => {
+                    // kill the inferior if it is already running
+                    self.kill_inferior();
                     if let Some(inferior) = Inferior::new(&self.target, &args) {
                         // Create the inferior
                         self.inferior = Some(inferior);
-                        // TODO (milestone 1): make the inferior run
-                        // You may use self.inferior.as_mut().unwrap() to get a mutable reference
-                        // to the Inferior object
-                        let cont = self.inferior.as_mut().unwrap().cont();
+                        // start
+                        self.continue_inferior();
 
                     } else {
                         println!("Error starting subprocess");
                     }
                 }
+                DebuggerCommand::Continue => {
+                    // Continue to run
+                    self.continue_inferior();
+                }
                 DebuggerCommand::Quit => {
+                    self.kill_inferior();
                     return;
                 }
+            }
+        }
+    }
+
+    pub fn kill_inferior(&mut self) {
+        if self.inferior.is_some() {
+            self.inferior.as_mut().unwrap().kill();
+            self.inferior = None;
+        }
+    }
+
+    pub fn continue_inferior(&mut self) {
+        match self.inferior.as_mut().unwrap().cont() {
+            Ok(status) => match status {
+                Status::Exited(exit_code) => {
+                    println!("Inferior exited with code {}", exit_code);
+                    self.kill_inferior();
+                }
+                Status::Signaled(signal) => {
+                    println!("Inferior was killed by signal {}", signal);
+                    self.kill_inferior();
+                }
+                Status::Stopped(signal, rip) => {
+                    println!("Inferior stopped at rip = 0x{:x} due to signal {}", rip, signal);
+                }
+            },
+            Err(e) => {
+                println!("Error: {:?}", e);
             }
         }
     }

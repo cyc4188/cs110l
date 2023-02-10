@@ -1,6 +1,5 @@
 use nix::sys::ptrace;
 use nix::sys::signal;
-use nix::sys::signal::Signal::SIGTRAP;
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::Pid;
 use std::process::Child;
@@ -43,9 +42,6 @@ impl Inferior {
             cmd.pre_exec(child_traceme);
         };
         
-        let child = cmd.spawn().expect("starting process failed");
-        // waitpid(Pid::from_raw(child.id() as i32), Some(WaitPidFlag::WCONTINUED)).unwrap();
-
         match cmd.spawn() {
             Ok(child) => Some(Inferior { child }),
             Err(_) => None,
@@ -75,5 +71,12 @@ impl Inferior {
     pub fn cont(&self) -> Result<Status, nix::Error> {
         ptrace::cont(self.pid(), None)?;
         self.wait(None)
+    }
+
+    /// kill the inferior
+    pub fn kill(&mut self) {
+        println!("Killing inferior {}", self.pid());
+        self.child.kill().unwrap();
+        self.wait(None).unwrap();
     }
 }
