@@ -1,6 +1,10 @@
 use crate::debugger_command::DebuggerCommand;
 use crate::inferior::Inferior;
 use crate::inferior::Status;
+use crate::dwarf_data:: {
+    DwarfData,
+    Error as DwarfError,
+};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
@@ -9,6 +13,7 @@ pub struct Debugger {
     history_path: String,
     readline: Editor<()>, // Line Editor
     inferior: Option<Inferior>,
+    debug_data: DwarfData,
 }
 
 impl Debugger {
@@ -19,13 +24,26 @@ impl Debugger {
         let history_path = format!("{}/.deet_history", std::env::var("HOME").unwrap());
         let mut readline = Editor::<()>::new().expect("Create Editor fail");
         // Attempt to load history from ~/.deet_history if it exists
-        let _ = readline.load_history(&history_path);
+        readline.load_history(&history_path).ok();
+
+        let debug_data = match DwarfData::from_file(target) {
+            Ok(data) => data,
+            Err(DwarfError::ErrorOpeningFile) => {
+                println!("Counld not open file {}", target);
+                std::process::exit(1);
+            }
+            Err(DwarfError::DwarfFormatError(e)) => {
+                println!("Could not debugging symbols from {} : {:?}", target, e);
+                std::process::exit(1);
+            }
+        }; 
 
         Debugger {
             target: target.to_string(),
             history_path,
             readline,
             inferior: None,
+            debug_data: debug_data,
         }
     }
 
@@ -54,7 +72,11 @@ impl Debugger {
                     return;
                 }
                 DebuggerCommand::Backtrace => {
-                    println!("Backtrace not implemented");
+                    if let Some(inferior) = &self.inferior {
+                        inferior.backtrace(&self.debug_data);
+                    } else {
+                        println!("No inferior running");
+                    }
                 }
                 _ => {
                     println!("Unknown command");
