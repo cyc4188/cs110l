@@ -1,3 +1,4 @@
+mod utils;
 mod debugger;
 mod debugger_command;
 mod inferior;

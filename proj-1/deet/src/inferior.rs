@@ -6,6 +6,7 @@ use std::process::Child;
 use std::process::Command;
 use std::os::unix::process::CommandExt;
 use crate::dwarf_data:: DwarfData;
+use crate::utils::align_addr_to_word;
 
 pub enum Status {
     /// Indicates inferior stopped. Contains the signal that stopped the process, as well as the
@@ -36,7 +37,7 @@ pub struct Inferior {
 impl Inferior {
     /// Attempts to start a new inferior process. Returns Some(Inferior) if successful, or None if
     /// an error is encountered.
-    pub fn new(target: &str, args: &Vec<String>) -> Option<Inferior> {
+    pub fn new(target: &str, args: &Vec<String>, breakpoints: &Vec<usize>) -> Option<Inferior> {
         let mut cmd = Command::new(target);
         cmd.args(args);
         unsafe {
@@ -44,7 +45,16 @@ impl Inferior {
         };
         
         match cmd.spawn() {
-            Ok(child) => Some(Inferior { child }),
+            Ok(child) => {
+                let mut inferior = Inferior { child };
+                breakpoints.iter().for_each(|addr| {
+                    match inferior.set_breakpoint(*addr) {
+                        Ok(_) => (),
+                        Err(e) => println!("Error setting breakpoint: {:?}", e),
+                    }
+                });
+                Some(inferior)
+            }
             Err(_) => None,
         }
     }
@@ -82,19 +92,46 @@ impl Inferior {
     }
     
     /// print stack trace of the program
-    pub fn backtrace(&self, debug_data: &DwarfData) {
-        let regs = ptrace::getregs(self.pid()).unwrap();
+    pub fn backtrace(&self, debug_data: &DwarfData) -> Result<(), nix::Error>  {
+        let regs = ptrace::getregs(self.pid())?;
         let mut instr_ptr = regs.rip as usize;
         let mut ebp = regs.rbp as usize; 
         loop {
+            println!("instr_ptr: 0x{:#x}:", instr_ptr);
+            println!("ebp: 0x{:#x}:", ebp);
             let line = debug_data.get_line_from_addr(instr_ptr).unwrap();
             let func = debug_data.get_function_from_addr(instr_ptr).unwrap();
             println!("{} ({})", func, line);
             if func == "main" {
                 break;
             }
-            instr_ptr = ptrace::read(self.pid(), (ebp + 8) as ptrace::AddressType).unwrap() as usize;
-            ebp = ptrace::read(self.pid(), ebp as ptrace::AddressType).unwrap() as usize;
+            instr_ptr = ptrace::read(self.pid(), (ebp + 8) as ptrace::AddressType)? as usize;
+            ebp = ptrace::read(self.pid(), ebp as ptrace::AddressType)? as usize;
         }
+        Ok(())
     }
+
+    pub fn set_breakpoint(&mut self, addr: usize) -> Result<u8, nix::Error> {
+        self.write_byte(addr, 0xcc)
+    }
+
+    /// write byte to process memory
+    /// used for setting breakpoints
+    fn write_byte(&mut self, addr: usize, val: u8) -> Result<u8, nix::Error> {
+        let aligned_addr = align_addr_to_word(addr);
+        let byte_offset = addr - aligned_addr;
+        let word = ptrace::read(self.pid(), aligned_addr as ptrace::AddressType)? as u64;
+        let orig_byte = (word >> 8 * byte_offset) & 0xff;
+        let masked_word = word & !(0xff << 8 * byte_offset);
+        let updated_word = masked_word | ((val as u64) << 8 * byte_offset);
+        unsafe {
+            ptrace::write(
+                self.pid(),
+                aligned_addr as ptrace::AddressType,
+                updated_word as *mut std::ffi::c_void,
+            )?;
+        }
+        Ok(orig_byte as u8)
+    }
+
 }

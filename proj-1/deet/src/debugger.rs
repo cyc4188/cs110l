@@ -5,6 +5,7 @@ use crate::dwarf_data:: {
     DwarfData,
     Error as DwarfError,
 };
+use crate::utils;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
@@ -14,6 +15,7 @@ pub struct Debugger {
     readline: Editor<()>, // Line Editor
     inferior: Option<Inferior>,
     debug_data: DwarfData,
+    breakpoints: Vec<usize>,
 }
 
 impl Debugger {
@@ -44,16 +46,20 @@ impl Debugger {
             readline,
             inferior: None,
             debug_data,
+            breakpoints: Vec::new(),
         }
     }
 
     pub fn run(&mut self) {
+        // test
+        self.debug_data.print(); // to be removed
+
         loop {
             match self.get_next_command() {
                 DebuggerCommand::Run(args) => {
                     // kill the inferior if it is already running
                     self.kill_inferior();
-                    if let Some(inferior) = Inferior::new(&self.target, &args) {
+                    if let Some(inferior) = Inferior::new(&self.target, &args, &self.breakpoints) {
                         // Create the inferior
                         self.inferior = Some(inferior);
                         // start
@@ -73,9 +79,25 @@ impl Debugger {
                 }
                 DebuggerCommand::Backtrace => {
                     if let Some(inferior) = &self.inferior {
-                        inferior.backtrace(&self.debug_data);
+                        inferior.backtrace(&self.debug_data).ok();
                     } else {
                         println!("No inferior running");
+                    }
+                }
+                DebuggerCommand::Break(addr) => {
+                    match addr.chars().nth(0).unwrap() {
+                        '*' => { // Break at address
+                            if let Some(addr) = utils::parse_address(&addr[1..]) {
+                                println!("Set breakpoint at address {:#x}", addr);
+                                self.breakpoints.push(addr);
+                            }
+                            else {
+                                println!("Invalid address");
+                            }
+                        }
+                        _ => {
+                            println!("Invalid breakpoint");
+                        }
                     }
                 }
                 _ => {
@@ -105,7 +127,9 @@ impl Debugger {
                         self.kill_inferior();
                     }
                     Status::Stopped(signal, rip) => {
-                        println!("Inferior stopped at rip = 0x{:x} due to signal {}", rip, signal);
+                        println!("Inferior stopped due to signal {}", signal);
+                        let line = self.debug_data.get_line_from_addr(rip).unwrap();
+                        println!("Stopped at {}", line);
                     }
                 },
                 Err(e) => {
