@@ -8,6 +8,13 @@ use crate::dwarf_data:: {
 use crate::utils;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
+use std::collections::HashMap;
+
+#[derive(Clone)]
+pub struct Breakpoint {
+    pub addr: usize,
+    pub orig_byte: u8,
+}
 
 pub struct Debugger {
     target: String,
@@ -15,14 +22,13 @@ pub struct Debugger {
     readline: Editor<()>, // Line Editor
     inferior: Option<Inferior>,
     debug_data: DwarfData,
-    breakpoints: Vec<usize>,
+    // breakpoints: Vec<usize>,
+    breakpoints: HashMap<usize, Option<Breakpoint>>,
 }
 
 impl Debugger {
     /// Initializes the debugger.
     pub fn new(target: &str) -> Debugger {
-        // TODO (milestone 3): initialize the DwarfData
-
         let history_path = format!("{}/.deet_history", std::env::var("HOME").unwrap());
         let mut readline = Editor::<()>::new().expect("Create Editor fail");
         // Attempt to load history from ~/.deet_history if it exists
@@ -46,7 +52,7 @@ impl Debugger {
             readline,
             inferior: None,
             debug_data,
-            breakpoints: Vec::new(),
+            breakpoints: HashMap::new(),
         }
     }
 
@@ -59,7 +65,7 @@ impl Debugger {
                 DebuggerCommand::Run(args) => {
                     // kill the inferior if it is already running
                     self.kill_inferior();
-                    if let Some(inferior) = Inferior::new(&self.target, &args, &self.breakpoints) {
+                    if let Some(inferior) = Inferior::new(&self.target, &args, &mut self.breakpoints) {
                         // Create the inferior
                         self.inferior = Some(inferior);
                         // start
@@ -84,20 +90,31 @@ impl Debugger {
                         println!("No inferior running");
                     }
                 }
-                DebuggerCommand::Break(addr) => {
-                    match addr.chars().nth(0).unwrap() {
-                        '*' => { // Break at address
-                            if let Some(addr) = utils::parse_address(&addr[1..]) {
-                                println!("Set breakpoint at address {:#x}", addr);
-                                self.breakpoints.push(addr);
-                            }
-                            else {
-                                println!("Invalid address");
-                            }
+                DebuggerCommand::Breakpoint(break_target) => {
+                    let addr: usize;
+                    if break_target.starts_with("*") {
+                        if let Some(tmp_addr) = utils::parse_address(&break_target[1..]) {
+                            addr = tmp_addr;
+                            println!("Set breakpoint at address {:#x}", addr);
+                            self.breakpoints.insert(addr, None);
                         }
-                        _ => {
-                            println!("Invalid breakpoint");
+                        else {
+                            println!("Invalid address");
+                            continue;
                         }
+                    }
+                    else {
+                        println!("Invalid breakpoint");
+                        continue;
+                    }
+
+                    if let Some(inferior) = &mut self.inferior {
+                        if let Ok(orig_byte) = inferior.set_breakpoint(addr) {
+                            self.breakpoints.insert(addr, Some(Breakpoint { addr, orig_byte}));
+                        }
+                    }
+                    else {
+                        self.breakpoints.insert(addr, None);
                     }
                 }
                 _ => {

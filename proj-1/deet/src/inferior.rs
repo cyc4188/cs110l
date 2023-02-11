@@ -5,8 +5,10 @@ use nix::unistd::Pid;
 use std::process::Child;
 use std::process::Command;
 use std::os::unix::process::CommandExt;
+use std::collections::HashMap;
 use crate::dwarf_data:: DwarfData;
 use crate::utils::align_addr_to_word;
+use crate::debugger::Breakpoint;
 
 pub enum Status {
     /// Indicates inferior stopped. Contains the signal that stopped the process, as well as the
@@ -37,7 +39,7 @@ pub struct Inferior {
 impl Inferior {
     /// Attempts to start a new inferior process. Returns Some(Inferior) if successful, or None if
     /// an error is encountered.
-    pub fn new(target: &str, args: &Vec<String>, breakpoints: &Vec<usize>) -> Option<Inferior> {
+    pub fn new(target: &str, args: &Vec<String>, breakpoints: &mut HashMap<usize, Option<Breakpoint>>) -> Option<Inferior> {
         let mut cmd = Command::new(target);
         cmd.args(args);
         unsafe {
@@ -47,9 +49,11 @@ impl Inferior {
         match cmd.spawn() {
             Ok(child) => {
                 let mut inferior = Inferior { child };
-                breakpoints.iter().for_each(|addr| {
+                breakpoints.iter_mut().for_each(|(addr, breakpoint)| {
                     match inferior.set_breakpoint(*addr) {
-                        Ok(_) => (),
+                        Ok(orig_byte) => {
+                            breakpoint.replace(Breakpoint { addr: *addr, orig_byte });
+                        }
                         Err(e) => println!("Error setting breakpoint: {:?}", e),
                     }
                 });
@@ -80,6 +84,8 @@ impl Inferior {
 
     /// continue to run the inferior
     pub fn cont(&self) -> Result<Status, nix::Error> {
+
+
         ptrace::cont(self.pid(), None)?;
         self.wait(None)
     }
