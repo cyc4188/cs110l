@@ -83,8 +83,38 @@ impl Inferior {
     }
 
     /// continue to run the inferior
-    pub fn cont(&self) -> Result<Status, nix::Error> {
-
+    pub fn cont(&mut self, breakpoints: &HashMap<usize, Option<Breakpoint>>) -> Result<Status, nix::Error> {
+        let mut regs = ptrace::getregs(self.pid())?;
+        let rip = regs.rip as usize;
+        // check if we are at a breakpoint
+        if breakpoints.contains_key(&(rip as usize - 1)) {
+            // we are at a breakpoint, so we need to restore the original byte
+            let breakpoint = breakpoints.get(&(rip as usize - 1)).unwrap().as_ref().unwrap();
+            self.write_byte(breakpoint.addr, breakpoint.orig_byte).unwrap();
+            // set the instruction pointer to the breakpoint address
+            regs.rip = (rip - 1) as u64;
+            ptrace::setregs(self.pid(), regs).unwrap();
+            ptrace::step(self.pid(), None).unwrap();
+            match self.wait(None) {
+                Ok(status) => {
+                    match status {
+                        Status::Stopped(_, _) => {
+                            // write the breakpoint back
+                            self.write_byte(rip - 1, 0xcc)?;
+                        }
+                        Status::Exited(exit_code) => {
+                            return Ok(Status::Exited(exit_code));
+                        }
+                        Status::Signaled(signal) => {
+                            return Ok(Status::Signaled(signal));
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("Error waiting for inferior: {:?}", e);
+                }
+            }
+        }
 
         ptrace::cont(self.pid(), None)?;
         self.wait(None)
@@ -103,8 +133,8 @@ impl Inferior {
         let mut instr_ptr = regs.rip as usize;
         let mut ebp = regs.rbp as usize; 
         loop {
-            println!("instr_ptr: 0x{:#x}:", instr_ptr);
-            println!("ebp: 0x{:#x}:", ebp);
+            // println!("instr_ptr: {:#x}:", instr_ptr);
+            // println!("ebp: {:#x}:", ebp);
             let line = debug_data.get_line_from_addr(instr_ptr).unwrap();
             let func = debug_data.get_function_from_addr(instr_ptr).unwrap();
             println!("{} ({})", func, line);

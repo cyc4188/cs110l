@@ -133,7 +133,7 @@ impl Debugger {
 
     pub fn continue_inferior(&mut self) {
         if let Some(inferior) = self.inferior.as_mut() {
-            match inferior.cont() {
+            match inferior.cont(&self.breakpoints) {
                 Ok(status) => match status {
                     Status::Exited(exit_code) => {
                         println!("Inferior exited with code {}", exit_code);
